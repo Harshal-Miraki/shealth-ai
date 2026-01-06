@@ -26,7 +26,9 @@ import {
     AlertCircle,
     Layers,
     Zap,
-    Play
+    Play,
+    ChevronLeft,
+    ChevronRight
 } from "lucide-react";
 import { runAIDiagnosis, storeDiagnosis, PatientInfo } from "../../services/aiDiagnosisService";
 import { dicomService, DicomMetadata } from "../../services/dicomService";
@@ -45,6 +47,8 @@ export default function UploadPage() {
     const [videoBase64, setVideoBase64] = useState<string | null>(null);
     const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
     const [showVideoModal, setShowVideoModal] = useState(false);
+    const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+    const [processingProgress, setProcessingProgress] = useState(0);
 
     // DICOM metadata
     const [dicomMetadata, setDicomMetadata] = useState<DicomMetadata | null>(null);
@@ -81,28 +85,136 @@ export default function UploadPage() {
     }, [dicomMetadata]);
 
     // Helper function to convert images to video for CT/MRI
-    const generateVideoFromImages = async (files: File[]): Promise<{ base64: string; previewUrl: string }> => {
+    const generateVideoFromImages = async (files: File[], onProgress?: (percent: number) => void): Promise<{ base64: string; previewUrl: string; frames: string[] }> => {
         return new Promise(async (resolve, reject) => {
+            let container: HTMLDivElement | null = null;
+            let currentProgress = 0;
+            const updateProgress = (completed: number, total: number) => {
+                const percent = Math.round((completed / total) * 100);
+                if (percent !== currentProgress) {
+                    currentProgress = percent;
+                    onProgress?.(percent);
+                }
+            };
+
             try {
                 // Sort files by name to ensure correct order
                 const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name));
+                const frames: string[] = [];
 
-                // Load all images first
-                const loadImage = (file: File): Promise<HTMLImageElement> => {
-                    return new Promise((res, rej) => {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            const img = new window.Image();
-                            img.onload = () => res(img);
-                            img.onerror = rej;
-                            img.src = e.target?.result as string;
-                        };
-                        reader.onerror = rej;
-                        reader.readAsDataURL(file);
-                    });
-                };
+                // Check if we are handling DICOMs
+                const isDicom = sortedFiles[0].name.toLowerCase().endsWith('.dcm') ||
+                    sortedFiles[0].name.toLowerCase().endsWith('.dicom') ||
+                    sortedFiles[0].type === 'application/dicom';
 
-                const images = await Promise.all(sortedFiles.map(loadImage));
+                let images: (HTMLImageElement | HTMLCanvasElement)[] = [];
+
+                if (isDicom) {
+                    console.log("Processing DICOM sequence for video...");
+
+                    // Initialize Cornerstone dynamically
+                    const cornerstone = (await import("cornerstone-core")).default;
+                    const cornerstoneWADOImageLoader = (await import("cornerstone-wado-image-loader")) as any;
+                    const dicomParser = (await import("dicom-parser")).default;
+
+                    // Configure WADO Image Loader
+                    cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+                    cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+
+                    // Initialize Web Workers safely (try/catch to avoid double-init errors)
+                    try {
+                        if (cornerstoneWADOImageLoader.webWorkerManager) {
+                            cornerstoneWADOImageLoader.webWorkerManager.initialize({
+                                maxWebWorkers: navigator.hardwareConcurrency || 1,
+                                startWebWorkersOnDemand: true,
+                                webWorkerPath: "/workers/cornerstoneWADOImageLoaderWebWorker.min.js",
+                            });
+                        }
+                    } catch (e) { /* Ignore */ }
+
+                    // Create a hidden container for rendering
+                    container = document.createElement('div');
+                    container.style.width = '512px';
+                    container.style.height = '512px';
+                    container.style.visibility = 'hidden';
+                    container.style.position = 'absolute';
+                    document.body.appendChild(container);
+                    cornerstone.enable(container);
+
+                    // Render each DICOM file to an image
+                    let processedCount = 0;
+                    for (const file of sortedFiles) {
+                        try {
+                            const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
+
+                            // Load image with timeout to prevent hang if worker fails
+                            const imagePromise = cornerstone.loadImage(imageId);
+                            const timeoutPromise = new Promise((_, reject) =>
+                                setTimeout(() => reject(new Error("Timeout loading DICOM")), 5000));
+
+                            const image = await Promise.race([imagePromise, timeoutPromise]) as any;
+                            cornerstone.displayImage(container, image);
+
+                            // Wait for render and capture
+                            await new Promise(r => setTimeout(r, 50));
+                            const canvas = container.querySelector('canvas');
+                            if (canvas) {
+                                // Create a new image from the canvas content
+                                const img = new window.Image();
+                                const dataUrl = canvas.toDataURL('image/png');
+                                frames.push(dataUrl);
+
+                                await new Promise<void>((r) => {
+                                    img.onload = () => r();
+                                    img.src = dataUrl;
+                                });
+                                images.push(img);
+                            }
+                        } catch (err) {
+                            console.error("Skipping problematic DICOM frame:", file.name, err);
+                        } finally {
+                            processedCount++;
+                            updateProgress(processedCount, sortedFiles.length);
+                        }
+                    }
+
+                    if (images.length === 0) {
+                        throw new Error("Failed to extract any frames from DICOM files");
+                    }
+
+                } else {
+                    // Regular Image Handling
+                    let processedCount = 0;
+                    const loadImage = (file: File): Promise<HTMLImageElement | null> => {
+                        return new Promise((res) => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                const img = new window.Image();
+                                img.onload = () => {
+                                    processedCount++;
+                                    updateProgress(processedCount, sortedFiles.length);
+                                    res(img);
+                                };
+                                img.onerror = () => {
+                                    processedCount++;
+                                    updateProgress(processedCount, sortedFiles.length);
+                                    res(null);
+                                };
+                                img.src = e.target?.result as string;
+                                frames.push(e.target?.result as string);
+                            };
+                            reader.onerror = () => {
+                                processedCount++;
+                                updateProgress(processedCount, sortedFiles.length);
+                                res(null);
+                            };
+                            reader.readAsDataURL(file);
+                        });
+                    };
+
+                    const loadedImages = await Promise.all(sortedFiles.map(loadImage));
+                    images = loadedImages.filter((img): img is HTMLImageElement => img !== null);
+                }
 
                 if (images.length === 0) {
                     reject(new Error("No images to process"));
@@ -110,20 +222,33 @@ export default function UploadPage() {
                 }
 
                 // Create canvas with first image dimensions
-                const canvas = document.createElement('canvas');
-                canvas.width = images[0].width || 512;
-                canvas.height = images[0].height || 512;
-                const ctx = canvas.getContext('2d');
+                const mainCanvas = document.createElement('canvas');
+                mainCanvas.width = images[0].width || 512;
+                mainCanvas.height = images[0].height || 512;
+                const ctx = mainCanvas.getContext('2d');
 
                 if (!ctx) {
                     reject(new Error("Could not get canvas context"));
                     return;
                 }
 
-                // Set up MediaRecorder
-                const stream = canvas.captureStream(30); // 30 fps
+                // Set up MediaRecorder with MIME type fallback
+                const stream = mainCanvas.captureStream(30); // 30 fps
+
+                // Try different MIME types for browser compatibility
+                let mimeType = 'video/webm;codecs=vp9';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm;codecs=vp8';
+                    if (!MediaRecorder.isTypeSupported(mimeType)) {
+                        mimeType = 'video/webm';
+                        if (!MediaRecorder.isTypeSupported(mimeType)) {
+                            mimeType = 'video/mp4';
+                        }
+                    }
+                }
+
                 const mediaRecorder = new MediaRecorder(stream, {
-                    mimeType: 'video/webm;codecs=vp9',
+                    mimeType: mimeType,
                     videoBitsPerSecond: 2500000
                 });
 
@@ -135,36 +260,52 @@ export default function UploadPage() {
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'video/webm' });
-                    // Create preview URL
+                    const blob = new Blob(chunks, { type: mimeType });
                     const previewUrl = URL.createObjectURL(blob);
-                    // Convert to base64
+
                     const reader = new FileReader();
                     reader.onloadend = () => {
+                        // Cleanup
+                        if (container && document.body.contains(container)) {
+                            document.body.removeChild(container);
+                        }
+
                         resolve({
                             base64: reader.result as string,
-                            previewUrl: previewUrl
+                            previewUrl: previewUrl,
+                            frames: frames
                         });
                     };
                     reader.onerror = reject;
                     reader.readAsDataURL(blob);
                 };
 
-                // Start recording
-                mediaRecorder.start();
+                mediaRecorder.onerror = (event) => {
+                    console.error('MediaRecorder error:', event);
+                    reject(new Error('MediaRecorder failed'));
+                };
+
+                // Start recording with 1000ms timeslice to ensure chunks are generated
+                console.log('Starting MediaRecorder...');
+                mediaRecorder.start(1000);
 
                 // Draw each image frame with delay
                 const frameDelay = 200; // 200ms per frame (5 fps effective display)
                 for (let i = 0; i < images.length; i++) {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(images[i], 0, 0, canvas.width, canvas.height);
+                    ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+                    ctx.drawImage(images[i], 0, 0, mainCanvas.width, mainCanvas.height);
                     await new Promise(r => setTimeout(r, frameDelay));
                 }
 
                 // Stop recording after last frame
-                await new Promise(r => setTimeout(r, 500)); // Extra time for last frame
+                console.log('Stopping MediaRecorder...');
+                await new Promise(r => setTimeout(r, 800)); // Increased extra time for last frame
                 mediaRecorder.stop();
+
             } catch (error) {
+                if (container && document.body.contains(container)) {
+                    document.body.removeChild(container);
+                }
                 reject(error);
             }
         });
@@ -212,6 +353,25 @@ export default function UploadPage() {
             } finally {
                 setIsParsingDicom(false);
             }
+
+            // For multi-image DICOM (CT/MRI), generate video sequence
+            if (isMultiImageScan && sortedFiles.length > 1) {
+                console.log('Starting video generation for DICOM sequence of', sortedFiles.length, 'files');
+                setIsProcessingVideo(true);
+                try {
+                    const videoResult = await generateVideoFromImages(sortedFiles, setProcessingProgress);
+                    console.log('DICOM Video generation completed');
+                    setVideoBase64(videoResult.base64);
+                    setVideoPreviewUrl(videoResult.previewUrl);
+                    // Use extracted frames for preview slideshow
+                    setImagePreviews(videoResult.frames);
+                } catch (error) {
+                    console.error("DICOM Video generation failed:", error);
+                    setDicomError("Failed to generate video preview from DICOM files.");
+                } finally {
+                    setIsProcessingVideo(false);
+                }
+            }
         } else {
             // Regular image files - create previews
             const previews: string[] = [];
@@ -232,11 +392,17 @@ export default function UploadPage() {
 
             // For multi-image CT/MRI, generate video preview automatically
             if (isMultiImageScan && sortedFiles.length > 1) {
+                console.log('Starting video generation for', sortedFiles.length, 'files');
                 setIsProcessingVideo(true);
                 try {
-                    const videoResult = await generateVideoFromImages(sortedFiles);
+                    const videoResult = await generateVideoFromImages(sortedFiles, setProcessingProgress);
+                    console.log('Video generation completed successfully');
                     setVideoBase64(videoResult.base64);
                     setVideoPreviewUrl(videoResult.previewUrl);
+                    // Update previews with all frames for complete slideshow
+                    if (videoResult.frames && videoResult.frames.length > 0) {
+                        setImagePreviews(videoResult.frames);
+                    }
                 } catch (error) {
                     console.error("Video preview generation failed:", error);
                     // Don't show error - preview will just show images instead
@@ -330,13 +496,11 @@ export default function UploadPage() {
                         setVideoPreviewUrl(videoResult.previewUrl);
                     } catch (error) {
                         console.error("Video generation failed:", error);
-                        alert("Failed to generate video from images. Using first image instead.");
-                        // Fallback to first image
-                        mediaBase64 = await new Promise<string>((resolve) => {
-                            const reader = new FileReader();
-                            reader.onload = (e) => resolve(e.target?.result as string);
-                            reader.readAsDataURL(uploadedFiles[0]);
-                        });
+                        // Enforce video requirement - do not fallback to single image
+                        alert("Failed to generate video from image sequence. Please try again or use fewer images.");
+                        setIsRunningDiagnosis(false);
+                        setIsProcessingVideo(false);
+                        return;
                     } finally {
                         setIsProcessingVideo(false);
                     }
@@ -509,7 +673,7 @@ export default function UploadPage() {
                                             <div className="aspect-square rounded-xl bg-slate-100 flex flex-col items-center justify-center">
                                                 <Loader2 className="w-10 h-10 text-[var(--color-primary)] animate-spin mb-4" />
                                                 <p className="text-slate-600 font-medium">
-                                                    {isParsingDicom ? "Parsing DICOM file..." : "Generating video preview..."}
+                                                    {isParsingDicom ? "Parsing DICOM file..." : `Generating video preview... ${processingProgress > 0 ? `${processingProgress}%` : ''}`}
                                                 </p>
                                                 <p className="text-sm text-slate-500">
                                                     {isParsingDicom ? "Extracting metadata and image" : "Converting image sequence to video"}
@@ -571,8 +735,8 @@ export default function UploadPage() {
                                                 <div className="flex items-center gap-2 text-sm text-slate-500">
                                                     <FileCheck className="w-4 h-4 text-emerald-500" />
                                                     <span>
-                                                        {videoPreviewUrl
-                                                            ? "Video preview ready - click image to play"
+                                                        {uploadedFiles.length > 1
+                                                            ? `${uploadedFiles.length} images uploaded`
                                                             : "File uploaded successfully"
                                                         }
                                                     </span>
@@ -581,10 +745,15 @@ export default function UploadPage() {
                                                             DICOM Parsed ✓
                                                         </span>
                                                     )}
-                                                    {videoPreviewUrl && (
-                                                        <span className="ml-auto text-emerald-500 font-medium">
-                                                            Video Generated ✓
-                                                        </span>
+                                                    {/* Show Preview button when we have multiple images for CT/MRI */}
+                                                    {isMultiImageScan && uploadedFiles.length > 1 && imagePreviews.length > 0 && (
+                                                        <button
+                                                            onClick={() => setShowVideoModal(true)}
+                                                            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+                                                        >
+                                                            <Play className="w-3 h-3" />
+                                                            {videoPreviewUrl ? 'Preview Video' : 'Preview Slideshow'}
+                                                        </button>
                                                     )}
                                                 </div>
                                             </>
@@ -836,8 +1005,8 @@ export default function UploadPage() {
                 </main>
             </div>
 
-            {/* Video Preview Modal */}
-            {showVideoModal && videoPreviewUrl && (
+            {/* Preview Modal - Video or Image Slideshow */}
+            {showVideoModal && (imagePreviews.length > 0 || videoPreviewUrl) && (
                 <div
                     className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
                     onClick={() => setShowVideoModal(false)}
@@ -849,9 +1018,14 @@ export default function UploadPage() {
                         {/* Modal Header */}
                         <div className="flex items-center justify-between px-6 py-4 bg-slate-800/50">
                             <div>
-                                <h3 className="text-lg font-semibold text-white">Video Preview</h3>
+                                <h3 className="text-lg font-semibold text-white">
+                                    {videoPreviewUrl ? 'Video Preview' : 'Scan Preview'}
+                                </h3>
                                 <p className="text-sm text-slate-400">
-                                    {uploadedFiles.length} images converted to video
+                                    {videoPreviewUrl
+                                        ? `${uploadedFiles.length} images converted to video`
+                                        : `Image ${currentSlideIndex + 1} of ${imagePreviews.length}`
+                                    }
                                 </p>
                             </div>
                             <button
@@ -862,21 +1036,69 @@ export default function UploadPage() {
                             </button>
                         </div>
 
-                        {/* Video Player */}
-                        <div className="relative aspect-video bg-black">
-                            <video
-                                src={videoPreviewUrl}
-                                className="w-full h-full object-contain"
-                                controls
-                                autoPlay
-                                loop
-                            />
-                        </div>
+                        {/* Content - Video or Slideshow */}
+                        {videoPreviewUrl ? (
+                            /* Video Preview */
+                            <div className="relative aspect-video bg-black">
+                                <video
+                                    src={videoPreviewUrl}
+                                    className="w-full h-full object-contain"
+                                    controls
+                                    autoPlay
+                                    loop
+                                />
+                            </div>
+                        ) : (
+                            /* Image Slideshow Fallback */
+                            <>
+                                <div className="relative aspect-video bg-black flex items-center justify-center">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={imagePreviews[currentSlideIndex]}
+                                        alt={`Scan image ${currentSlideIndex + 1}`}
+                                        className="max-w-full max-h-full object-contain"
+                                    />
+
+                                    {/* Previous Button */}
+                                    <button
+                                        onClick={() => setCurrentSlideIndex(prev => prev > 0 ? prev - 1 : imagePreviews.length - 1)}
+                                        className="absolute left-4 p-3 rounded-full bg-white/20 hover:bg-white/40 text-white transition-colors"
+                                    >
+                                        <ChevronLeft className="w-6 h-6" />
+                                    </button>
+
+                                    {/* Next Button */}
+                                    <button
+                                        onClick={() => setCurrentSlideIndex(prev => prev < imagePreviews.length - 1 ? prev + 1 : 0)}
+                                        className="absolute right-4 p-3 rounded-full bg-white/20 hover:bg-white/40 text-white transition-colors"
+                                    >
+                                        <ChevronRight className="w-6 h-6" />
+                                    </button>
+                                </div>
+
+                                {/* Image Indicators */}
+                                <div className="px-6 py-3 bg-slate-800/50 flex items-center justify-center gap-2 overflow-x-auto">
+                                    {imagePreviews.map((_, index) => (
+                                        <button
+                                            key={index}
+                                            onClick={() => setCurrentSlideIndex(index)}
+                                            className={`w-2.5 h-2.5 rounded-full transition-colors ${index === currentSlideIndex
+                                                ? 'bg-emerald-500'
+                                                : 'bg-slate-600 hover:bg-slate-500'
+                                                }`}
+                                        />
+                                    ))}
+                                </div>
+                            </>
+                        )}
 
                         {/* Modal Footer */}
                         <div className="px-6 py-4 bg-slate-800/50 flex items-center justify-between">
                             <p className="text-sm text-slate-400">
-                                This video will be sent to the AI for analysis
+                                {videoPreviewUrl
+                                    ? 'This video will be sent to AI for analysis'
+                                    : 'These images will be converted to video for AI analysis'
+                                }
                             </p>
                             <button
                                 onClick={() => setShowVideoModal(false)}

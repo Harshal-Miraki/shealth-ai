@@ -211,14 +211,14 @@ export default function AnalyticsPage() {
                             icon={<Activity className="w-6 h-6 text-violet-600" />}
                             bg="bg-violet-50"
                         />
-                        <StatCard
+                        {/* <StatCard
                             title="Active Patients"
                             value="53"
                             trend="+5.4%"
                             trendUp={true}
                             icon={<Users className="w-6 h-6 text-amber-600" />}
                             bg="bg-amber-50"
-                        />
+                        /> */}
                     </div>
 
                     {/* Charts Section 1: Main Trend & Distribution */}

@@ -213,7 +213,7 @@ export default function AnalyticsPage() {
                         />
                         <StatCard
                             title="Active Patients"
-                            value="842"
+                            value="53"
                             trend="+5.4%"
                             trendUp={true}
                             icon={<Users className="w-6 h-6 text-amber-600" />}

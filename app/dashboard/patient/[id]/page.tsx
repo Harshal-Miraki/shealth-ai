@@ -511,7 +511,7 @@ export default function PatientDetailPage() {
                                         <Brain className="w-5 h-5 text-[var(--color-primary)]" />
                                         AI Analysis Report
                                     </h2>
-                                    {patient.aiReport && (
+                                    {/* {patient.aiReport && (
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm text-slate-500">Confidence:</span>
                                             <span className={`text-sm font-bold ${patient.aiReport.confidence >= 95 ? "text-emerald-600" :
@@ -520,7 +520,7 @@ export default function PatientDetailPage() {
                                                 {patient.aiReport.confidence}%
                                             </span>
                                         </div>
-                                    )}
+                                    )} */}
                                 </div>
                                 <div className="p-6">
                                     {isLoadingReport ? (

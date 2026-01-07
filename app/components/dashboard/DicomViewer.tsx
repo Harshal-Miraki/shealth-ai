@@ -27,31 +27,30 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
                 const cornerstone = (await import("cornerstone-core")).default;
                 const cornerstoneWADOImageLoader = (await import("cornerstone-wado-image-loader")) as any;
                 const dicomParser = (await import("dicom-parser")).default;
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const Hammer = (await import("hammerjs")).default;
-
+                
                 // Configure WADO Image Loader
                 cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
                 cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
 
-                // Configure Web Workers (optional - may not work in all environments)
+                // Configure Web Workers
                 try {
-                    if (cornerstoneWADOImageLoader.webWorkerManager) {
-                        cornerstoneWADOImageLoader.webWorkerManager.initialize({
-                            maxWebWorkers: navigator.hardwareConcurrency || 1,
-                            startWebWorkersOnDemand: true,
-                            taskConfiguration: {
-                                decodeTask: {
-                                    initializeCodecsOnStartup: false,
-                                    usePDFJS: false,
-                                    strict: false,
-                                },
+                    const config = {
+                        maxWebWorkers: navigator.hardwareConcurrency || 1,
+                        startWebWorkersOnDemand: true,
+                        taskConfiguration: {
+                            decodeTask: {
+                                initializeCodecsOnStartup: false,
+                                usePDFJS: false,
+                                strict: false,
                             },
-                            webWorkerPath: "/workers/cornerstoneWADOImageLoaderWebWorker.min.js",
-                        });
+                        },
+                        webWorkerPath: "/workers/cornerstoneWADOImageLoaderWebWorker.min.js",
+                    };
+                    if (!cornerstoneWADOImageLoader.webWorkerManager.isInitialized) {
+                        cornerstoneWADOImageLoader.webWorkerManager.initialize(config);
                     }
                 } catch (workerError) {
-                    console.warn("Web workers not available:", workerError);
+                    console.warn("Web workers could not be configured:", workerError);
                 }
 
                 if (mounted) {
@@ -90,6 +89,9 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
                 const element = elementRef.current;
                 cornerstone.enable(element);
 
+                // Clear any previous files from the manager
+                cornerstoneWADOImageLoader.wadouri.fileManager.purge();
+                
                 // Add file to WADO file manager
                 imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
 
@@ -133,8 +135,6 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
 
         return () => {
             mounted = false;
-            // Cleanup logic if needed (cornerstone.disable(element))
-            // Note: cornerstoneWADOImageLoader.wadouri.fileManager.remove(imageId) could be called but imageId scope is local.
         };
     }, [file, isInitialized, onImageRendered]);
 
@@ -158,11 +158,10 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 z-10 p-6 text-center">
                     <AlertCircle className="w-10 h-10 text-red-500 mb-3" />
                     <p className="text-red-400 font-medium mb-1">Error Loading Image</p>
+
                     <p className="text-sm text-slate-400 max-w-xs">{error}</p>
-                    <p className="text-xs text-slate-500 mt-2">Metadata still extracted successfully</p>
                 </div>
             )}
         </div>
     );
 }
-

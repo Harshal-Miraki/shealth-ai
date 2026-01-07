@@ -36,6 +36,7 @@ export interface DiagnosisResult {
         scanImage: string;
     };
     aiReport: AIReport;
+    dicomFiles?: File[]; // Field to hold the raw files in memory
 }
 
 // Helper to convert File to Base64
@@ -50,14 +51,17 @@ function fileToBase64(file: File): Promise<string> {
 
 // Run AI diagnosis by calling our internal API
 export async function runAIDiagnosis(
-    imageFile: File,
+    files: File[],
     patientInfo: PatientInfo,
-    renderedImageBase64?: string // Optional pre-rendered image for DICOM files
+    renderedMediaBase64?: string
 ): Promise<DiagnosisResult> {
     
     try {
-        // 1. Use pre-rendered image if provided (for DICOM), otherwise convert file to Base64
-        const imageBase64 = renderedImageBase64 || await fileToBase64(imageFile);
+        if (files.length === 0) {
+            throw new Error("At least one file is required for diagnosis.");
+        }
+        // 1. Use pre-rendered media if provided, otherwise convert the first file to Base64
+        const imageBase64 = renderedMediaBase64 || await fileToBase64(files[0]);
 
         // 2. Prepare Payload
         const payload = {
@@ -79,8 +83,10 @@ export async function runAIDiagnosis(
             throw new Error(errorData.error || 'Diagnosis failed');
         }
 
-        // 4. Return result from API
+        // 4. Get result from API and attach the raw files for in-memory storage
         const result: DiagnosisResult = await response.json();
+        result.dicomFiles = files; // Attach the files to the result object
+        
         return result;
 
     } catch (error) {
@@ -94,24 +100,26 @@ export async function runAIDiagnosis(
 const diagnosisStore: Map<string, DiagnosisResult> = new Map();
 
 export function storeDiagnosis(result: DiagnosisResult): void {
+    // The full result with File objects is stored in the in-memory map
     diagnosisStore.set(result.id, result);
-    // Also store in sessionStorage for persistence during session
-    // Note: We store a lightweight version without the large base64 image to avoid quota issues
+
+    // A lightweight version is stored in sessionStorage for persistence during the session
     if (typeof window !== 'undefined') {
         try {
             const stored = sessionStorage.getItem('diagnoses') || '{}';
             const diagnoses = JSON.parse(stored);
             
-            // Create a lightweight copy without the large base64 image
-            const lightweightResult = {
+            // Create a lightweight copy without the large base64 image and without File objects
+            const lightweightResult: DiagnosisResult = {
                 ...result,
                 patient: {
                     ...result.patient,
-                    // Replace large base64 with a placeholder - actual image is in memory store
+                    // Replace large base64 with a placeholder to avoid quota issues
                     scanImage: result.patient.scanImage?.startsWith('data:') 
                         ? '/shelth_dashboard_hero.png'  // Fallback placeholder for sessionStorage
                         : result.patient.scanImage
-                }
+                },
+                dicomFiles: undefined // Ensure File objects are not stored in sessionStorage
             };
             
             diagnoses[result.id] = lightweightResult;
@@ -123,11 +131,11 @@ export function storeDiagnosis(result: DiagnosisResult): void {
 }
 
 export function getDiagnosis(id: string): DiagnosisResult | null {
-    // First check in-memory store
+    // First check in-memory store (which has the File objects)
     if (diagnosisStore.has(id)) {
         return diagnosisStore.get(id) || null;
     }
-    // Then check sessionStorage
+    // Then check sessionStorage for the lightweight version
     if (typeof window !== 'undefined') {
         const stored = sessionStorage.getItem('diagnoses') || '{}';
         const diagnoses = JSON.parse(stored);

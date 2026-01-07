@@ -30,6 +30,8 @@ import {
     Loader2,
 } from "lucide-react";
 import { getDiagnosis } from "../../../services/aiDiagnosisService";
+import { DicomViewer } from "../../../components/dashboard/DicomViewer";
+import { DicomSeriesViewer } from "../../../components/dashboard/DicomSeriesViewer";
 
 // Mock patient data - in real app, fetch from API
 const patientsData: Record<string, any> = {
@@ -452,19 +454,22 @@ export default function PatientDetailPage() {
                                 </div>
                             </div>
 
-                            {/* Scanned Image */}
+                            {/* Interactive Scan Viewer */}
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-6 py-4 border-b border-slate-100">
                                     <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                                         <FileImage className="w-5 h-5 text-[var(--color-primary)]" />
-                                        Scanned Image
+                                        Interactive Scan Viewer
                                     </h2>
                                 </div>
                                 <div className="p-4">
                                     <div className="relative aspect-square rounded-xl overflow-hidden bg-slate-900">
-                                        {/* Check if scanImage is a base64 data URL or a static path */}
-                                        {patient.scanImage?.startsWith('data:') ? (
-                                            /* Use regular img for base64 data URLs (uploaded DICOM/images) */
+                                        {patient.dicomFiles && patient.dicomFiles.length > 1 ? (
+                                            <DicomSeriesViewer files={patient.dicomFiles} className="absolute inset-0 w-full h-full" />
+                                        ) : patient.dicomFiles && patient.dicomFiles.length === 1 ? (
+                                            <DicomViewer file={patient.dicomFiles[0]} className="absolute inset-0 w-full h-full" />
+                                        ) : patient.scanImage?.startsWith('data:') ? (
+                                            /* Use regular img for base64 data URLs (e.g. from sessionStorage) */
                                             /* eslint-disable-next-line @next/next/no-img-element */
                                             <img
                                                 src={patient.scanImage}
@@ -475,7 +480,7 @@ export default function PatientDetailPage() {
                                             /* Use Next.js Image for static file paths */
                                             <>
                                                 <Image
-                                                    src={patient.scanImage}
+                                                    src={patient.scanImage || '/shelth_dashboard_hero.png'}
                                                     alt="Medical Scan"
                                                     fill
                                                     className="object-cover print:hidden"
@@ -483,17 +488,12 @@ export default function PatientDetailPage() {
                                                 {/* Regular img for print */}
                                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                                 <img
-                                                    src={patient.scanImage}
+                                                    src={patient.scanImage || '/shelth_dashboard_hero.png'}
                                                     alt="Medical Scan"
                                                     className="hidden print:block w-full h-full object-cover"
                                                 />
                                             </>
                                         )}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent print:hidden" />
-                                        <div className="absolute bottom-4 left-4 text-white print:hidden">
-                                            <p className="text-sm font-medium">{patient.scanType}</p>
-                                            <p className="text-xs text-white/70">{patient.scanDate}</p>
-                                        </div>
                                     </div>
                                     <p className="hidden print:block text-center text-sm text-slate-600 mt-2">
                                         {patient.scanType} - {patient.scanDate}

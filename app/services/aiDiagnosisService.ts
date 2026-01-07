@@ -109,21 +109,30 @@ export function storeDiagnosis(result: DiagnosisResult): void {
             const stored = sessionStorage.getItem('diagnoses') || '{}';
             const diagnoses = JSON.parse(stored);
             
-            // Create a lightweight copy without the large base64 image and without File objects
-            const lightweightResult: DiagnosisResult = {
+            // Create a copy without File objects (which can't be serialized)
+            const serializableResult: DiagnosisResult = {
                 ...result,
-                patient: {
-                    ...result.patient,
-                    // Replace large base64 with a placeholder to avoid quota issues
-                    scanImage: result.patient.scanImage?.startsWith('data:') 
-                        ? '/shelth_dashboard_hero.png'  // Fallback placeholder for sessionStorage
-                        : result.patient.scanImage
-                },
-                dicomFiles: undefined // Ensure File objects are not stored in sessionStorage
+                dicomFiles: undefined // File objects can't be stored in sessionStorage
             };
             
-            diagnoses[result.id] = lightweightResult;
-            sessionStorage.setItem('diagnoses', JSON.stringify(diagnoses));
+            diagnoses[result.id] = serializableResult;
+            
+            try {
+                sessionStorage.setItem('diagnoses', JSON.stringify(diagnoses));
+            } catch (quotaError) {
+                // If quota exceeded, try storing without the large base64 image
+                console.warn('SessionStorage quota exceeded, storing without image:', quotaError);
+                const lightweightResult: DiagnosisResult = {
+                    ...result,
+                    patient: {
+                        ...result.patient,
+                        scanImage: '/shelth_dashboard_hero.png' // Fallback placeholder
+                    },
+                    dicomFiles: undefined
+                };
+                diagnoses[result.id] = lightweightResult;
+                sessionStorage.setItem('diagnoses', JSON.stringify(diagnoses));
+            }
         } catch (error) {
             console.warn('Could not save to sessionStorage, data will be in memory only:', error);
         }

@@ -468,31 +468,43 @@ export default function PatientDetailPage() {
                                             <DicomSeriesViewer files={patient.dicomFiles} className="absolute inset-0 w-full h-full" />
                                         ) : patient.dicomFiles && patient.dicomFiles.length === 1 ? (
                                             <DicomViewer file={patient.dicomFiles[0]} className="absolute inset-0 w-full h-full" />
-                                        ) : patient.scanImage?.startsWith('data:') ? (
-                                            /* Use regular img for base64 data URLs (e.g. from sessionStorage) */
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img
-                                                src={patient.scanImage}
-                                                alt="Medical Scan"
-                                                className="absolute inset-0 w-full h-full object-cover print:block"
-                                            />
-                                        ) : (
-                                            /* Use Next.js Image for static file paths */
-                                            <>
-                                                <Image
-                                                    src={patient.scanImage || '/shelth_dashboard_hero.png'}
-                                                    alt="Medical Scan"
-                                                    fill
-                                                    className="object-cover print:hidden"
+                                        ) : patient.scanImage ? (
+                                            patient.scanImage.startsWith('data:application/dicom') || patient.scanImage.startsWith('data:application/octet-stream') ? (
+                                                /* Handle raw DICOM base64 */
+                                                <DicomViewer
+                                                    file={base64ToFile(patient.scanImage, `scan-${patient.id}.dcm`)}
+                                                    className="absolute inset-0 w-full h-full"
                                                 />
-                                                {/* Regular img for print */}
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            ) : patient.scanImage.startsWith('data:') ? (
+                                                /* Handle standard image base64 */
+                                                /* eslint-disable-next-line @next/next/no-img-element */
                                                 <img
-                                                    src={patient.scanImage || '/shelth_dashboard_hero.png'}
+                                                    src={patient.scanImage}
                                                     alt="Medical Scan"
-                                                    className="hidden print:block w-full h-full object-cover"
+                                                    className="absolute inset-0 w-full h-full object-cover print:block"
                                                 />
-                                            </>
+                                            ) : (
+                                                /* Handle static file paths */
+                                                <>
+                                                    <Image
+                                                        src={patient.scanImage}
+                                                        alt="Medical Scan"
+                                                        fill
+                                                        className="object-cover print:hidden"
+                                                    />
+                                                    {/* Regular img for print */}
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={patient.scanImage}
+                                                        alt="Medical Scan"
+                                                        className="hidden print:block w-full h-full object-cover"
+                                                    />
+                                                </>
+                                            )
+                                        ) : (
+                                            <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                                                No scan image available
+                                            </div>
                                         )}
                                     </div>
                                     <p className="hidden print:block text-center text-sm text-slate-600 mt-2">
@@ -691,6 +703,7 @@ export default function PatientDetailPage() {
     );
 }
 
+
 function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
     return (
         <div className="flex items-start gap-3">
@@ -703,4 +716,17 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
             </div>
         </div>
     );
+}
+
+// Helper to convert base64 to File object
+function base64ToFile(base64: string, filename: string): File {
+    const arr = base64.split(',');
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime });
 }

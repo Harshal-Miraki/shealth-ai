@@ -1,12 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Loader2, AlertCircle, Play, Pause, Rewind, FastForward, Film } from "lucide-react";
-
-// Define Cornerstone types in a global scope for dynamic imports
-let cornerstone: any;
-let cornerstoneWADOImageLoader: any;
-let dicomParser: any;
+import { Loader2, AlertCircle, Play, Pause, Film } from "lucide-react";
 
 interface DicomSeriesViewerProps {
     files: File[];
@@ -19,12 +14,18 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
     const [error, setError] = useState<string | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [imageIds, setImageIds] = useState<string[]>([]);
-    const [stack, setStack] = useState<any>(null);
+    const [stack, setStack] = useState<{ imageIds: string[] } | null>(null);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // 1. Initialize Cornerstone Libraries
+    // Refs to hold library instances
+    const refs = useRef<{
+        cornerstone?: any;
+        cornerstoneWADOImageLoader?: any;
+    }>({});
+
+    // 1. Initialize Cornerstone Libraries (Once)
     useEffect(() => {
         let mounted = true;
 
@@ -32,15 +33,24 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
             try {
                 if (typeof window === "undefined") return;
 
-                cornerstone = (await import("cornerstone-core")).default;
-                cornerstoneWADOImageLoader = (await import("cornerstone-wado-image-loader")).default;
-                dicomParser = (await import("dicom-parser")).default;
-                const Hammer = (await import("hammerjs")).default; // For touch controls
+                // Load dependencies (NO cornerstone-tools)
+                const [cs, csWADOImageLoader, dicomParser] = await Promise.all([
+                    import("cornerstone-core"),
+                    import("cornerstone-wado-image-loader"),
+                    import("dicom-parser"),
+                ]);
 
+                const cornerstone = cs.default;
+                const cornerstoneWADOImageLoader = csWADOImageLoader.default;
+
+                // Store refs
+                refs.current.cornerstone = cornerstone;
+                refs.current.cornerstoneWADOImageLoader = cornerstoneWADOImageLoader;
+
+                // Configure WADO Image Loader
                 cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-                cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
-                
-                // Configure Web Workers
+                cornerstoneWADOImageLoader.external.dicomParser = dicomParser.default;
+
                 const webWorkerConfig = {
                     maxWebWorkers: navigator.hardwareConcurrency || 4,
                     startWebWorkersOnDemand: true,
@@ -53,12 +63,11 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
                     },
                     webWorkerPath: "/workers/cornerstoneWADOImageLoaderWebWorker.min.js",
                 };
-                
-                // This check prevents re-initialization errors on hot-reloads
-                if (!cornerstoneWADOImageLoader.webWorkerManager.isInitialized) {
-                    cornerstoneWADOImageLoader.webWorkerManager.initialize(webWorkerConfig);
+
+                if (!(cornerstoneWADOImageLoader as any).webWorkerManager.isInitialized) {
+                    (cornerstoneWADOImageLoader as any).webWorkerManager.initialize(webWorkerConfig);
                 }
-                
+
                 if (mounted) setIsInitialized(true);
             } catch (err) {
                 console.error("Failed to initialize Cornerstone:", err);
@@ -79,63 +88,54 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
     // 2. Load Files into Image IDs
     useEffect(() => {
         if (!isInitialized || !files || files.length === 0) return;
-        
-        // Important: Clear old files from the manager to prevent memory leaks
+
+        const { cornerstoneWADOImageLoader } = refs.current;
+        if (!cornerstoneWADOImageLoader) return;
+
         try {
             cornerstoneWADOImageLoader.wadouri.fileManager.purge();
-        } catch(e) {
-            // Can ignore if it fails (e.g. on first load)
+        } catch (e) {
+            // ignore
         }
-        
-        const loadedImageIds = files.map(file => 
+
+        const loadedImageIds = files.map((file) =>
             cornerstoneWADOImageLoader.wadouri.fileManager.add(file)
         );
 
         setImageIds(loadedImageIds);
-        setCurrentImageIndex(0); // Reset to first image on new files
+        setCurrentImageIndex(0);
         setIsLoading(true);
         setError(null);
-
     }, [files, isInitialized]);
 
-    // 3. Create Stack and Display First Image
+    // 3. Display First Image
     useEffect(() => {
         let mounted = true;
-        
+
         const loadAndDisplayImage = async () => {
             if (!isInitialized || imageIds.length === 0 || !elementRef.current) return;
-            
+
+            const { cornerstone } = refs.current;
+            if (!cornerstone) return;
+
             const element = elementRef.current;
-            cornerstone.enable(element);
+
+            // Enable element
+            try {
+                cornerstone.enable(element);
+            } catch (e) {
+                // ignore re-enable
+            }
 
             const newStack = {
-                currentImageIdIndex: 0,
                 imageIds: imageIds,
             };
 
             try {
                 const image = await cornerstone.loadImage(imageIds[0]);
+
                 if (mounted) {
                     cornerstone.displayImage(element, image);
-                    
-                    // Add stack state and tools for interaction
-                    const cornerstoneTools = (await import("cornerstone-tools")).default;
-                    const Hammer = (await import("hammerjs")).default;
-                    cornerstoneTools.external.cornerstone = cornerstone;
-                    cornerstoneTools.external.Hammer = Hammer; // Bind Hammer.js for touch/mouse input
-                    
-                    // Initialize tools if not already done
-                    try {
-                      cornerstoneTools.init();
-                    } catch(e) { /* ignore re-init error */ }
-
-                    cornerstoneTools.addStackStateManager(element, ["stack"]);
-                    cornerstoneTools.addToolState(element, "stack", newStack);
-                    
-                    // Optional: Enable mouse/touch controls
-                    cornerstoneTools.addTool(cornerstoneTools.StackScrollMouseWheelTool);
-                    cornerstoneTools.setToolActive(element, "StackScrollMouseWheel", { mouseButtonMask: 1 });
-
                     setStack(newStack);
                     setIsLoading(false);
                 }
@@ -154,31 +154,45 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
 
         return () => {
             mounted = false;
+            // cleanup
+            if (elementRef.current && refs.current.cornerstone) {
+                try {
+                    refs.current.cornerstone.disable(elementRef.current);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
         };
     }, [imageIds, isInitialized]);
 
     // 4. Function to display a specific image in the stack
-    const displayImageByIndex = useCallback((index: number) => {
-        if (!stack || index < 0 || index >= stack.imageIds.length || !elementRef.current) return;
+    const displayImageByIndex = useCallback(
+        (index: number) => {
+            if (!stack || index < 0 || index >= stack.imageIds.length || !elementRef.current) return;
+            const { cornerstone } = refs.current;
+            if (!cornerstone) return;
 
-        const element = elementRef.current;
-        const imageId = stack.imageIds[index];
-        cornerstone.enable(element);
+            const element = elementRef.current;
+            const imageId = stack.imageIds[index];
 
-        cornerstone.loadImage(imageId).then((image: any) => {
-            cornerstone.displayImage(element, image);
-            setCurrentImageIndex(index);
-        }).catch((err: Error) => {
-            console.error(`Failed to load image at index ${index}:`, err);
-            setError(`Could not load frame ${index + 1}`);
-        });
-    }, [stack]);
+            cornerstone
+                .loadImage(imageId)
+                .then((image: any) => {
+                    cornerstone.displayImage(element, image);
+                    setCurrentImageIndex(index);
+                })
+                .catch((err: Error) => {
+                    console.error(`Failed to load image at index ${index}:`, err);
+                });
+        },
+        [stack]
+    );
 
     // 5. Playback Logic
     useEffect(() => {
         if (isPlaying && stack) {
             playbackIntervalRef.current = setInterval(() => {
-                setCurrentImageIndex(prevIndex => {
+                setCurrentImageIndex((prevIndex) => {
                     const nextIndex = (prevIndex + 1) % stack.imageIds.length;
                     displayImageByIndex(nextIndex);
                     return nextIndex;
@@ -192,12 +206,11 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
         };
     }, [isPlaying, stack, displayImageByIndex]);
 
-
     const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newIndex = parseInt(e.target.value, 10);
         displayImageByIndex(newIndex);
     };
-    
+
     return (
         <div className={`relative bg-black select-none overflow-hidden rounded-lg shadow-xl ${className}`}>
             <div
@@ -222,10 +235,13 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
             )}
 
             {!isLoading && !error && stack && files.length > 1 && (
-                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-20">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-20">
                     <div className="flex items-center gap-4 text-white">
                         {/* Play/Pause Button */}
-                        <button onClick={() => setIsPlaying(!isPlaying)} className="hover:text-[var(--color-primary)] transition-colors">
+                        <button
+                            onClick={() => setIsPlaying(!isPlaying)}
+                            className="hover:text-[var(--color-primary)] transition-colors"
+                        >
                             {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
                         </button>
 

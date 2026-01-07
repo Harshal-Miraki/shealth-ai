@@ -64,8 +64,8 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
                     webWorkerPath: "/workers/cornerstoneWADOImageLoaderWebWorker.min.js",
                 };
 
-                if (!cornerstoneWADOImageLoader.webWorkerManager.isInitialized) {
-                    cornerstoneWADOImageLoader.webWorkerManager.initialize(webWorkerConfig);
+                if (!(cornerstoneWADOImageLoader as any).webWorkerManager.isInitialized) {
+                    (cornerstoneWADOImageLoader as any).webWorkerManager.initialize(webWorkerConfig);
                 }
 
                 if (mounted) setIsInitialized(true);

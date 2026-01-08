@@ -194,7 +194,7 @@ export default function UploadPage() {
             } else if (uploadedFiles.length > 1) {
                 // For multi-file (series), we don't send a single base64.
                 // The service will use files[0] for the API call and store the full files array.
-                renderedMediaBase64 = undefined; 
+                renderedMediaBase64 = undefined;
             }
 
 
@@ -375,10 +375,15 @@ export default function UploadPage() {
                                                 >
                                                     {isDicomFile && uploadedFiles.length > 1 ? (
                                                         // Render multi-file DICOM series
-                                                        <DicomSeriesViewer files={uploadedFiles} className="absolute inset-0 w-full h-full" />
+                                                        <DicomSeriesViewer
+                                                            key={`series-${uploadedFiles[0].name}-${uploadedFiles[0].lastModified}`}
+                                                            files={uploadedFiles}
+                                                            className="absolute inset-0 w-full h-full"
+                                                        />
                                                     ) : isDicomFile && uploadedFiles.length === 1 ? (
                                                         // Render single DICOM image
                                                         <DicomViewer
+                                                            key={`single-${uploadedFiles[0].name}-${uploadedFiles[0].lastModified}`}
                                                             file={uploadedFiles[0]}
                                                             className="absolute inset-0 w-full h-full"
                                                             onImageRendered={(imageDataUrl) => setRenderedDicomImage(imageDataUrl)}

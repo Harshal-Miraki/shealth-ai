@@ -89,11 +89,17 @@ export function DicomSeriesViewer({ files, className = "" }: DicomSeriesViewerPr
     useEffect(() => {
         if (!isInitialized || !files || files.length === 0) return;
 
-        const { cornerstoneWADOImageLoader } = refs.current;
-        if (!cornerstoneWADOImageLoader) return;
+        const { cornerstone, cornerstoneWADOImageLoader } = refs.current;
+        if (!cornerstone || !cornerstoneWADOImageLoader) return;
 
         try {
             cornerstoneWADOImageLoader.wadouri.fileManager.purge();
+            (cornerstone as any).imageCache.purgeCache();
+            if (cornerstoneWADOImageLoader.wadouri.dataSetCacheManager) {
+                try {
+                    cornerstoneWADOImageLoader.wadouri.dataSetCacheManager.purge();
+                } catch (e) { /* ignore */ }
+            }
         } catch (e) {
             // ignore
         }

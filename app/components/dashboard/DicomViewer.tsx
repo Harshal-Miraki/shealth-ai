@@ -27,7 +27,7 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
                 const cornerstone = (await import("cornerstone-core")).default;
                 const cornerstoneWADOImageLoader = (await import("cornerstone-wado-image-loader")) as any;
                 const dicomParser = (await import("dicom-parser")).default;
-                
+
                 // Configure WADO Image Loader
                 cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
                 cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
@@ -83,7 +83,7 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
             setError(null);
 
             try {
-                const cornerstone = (await import("cornerstone-core")).default;
+                const cornerstone = (await import("cornerstone-core")).default as any;
                 const cornerstoneWADOImageLoader = (await import("cornerstone-wado-image-loader")) as any;
 
                 const element = elementRef.current;
@@ -91,7 +91,19 @@ export function DicomViewer({ file, className = "", onImageRendered }: DicomView
 
                 // Clear any previous files from the manager
                 cornerstoneWADOImageLoader.wadouri.fileManager.purge();
-                
+
+                // Purge cornerstone cache to prevent ID collisions returning old images
+                cornerstone.imageCache.purgeCache();
+
+                if (cornerstoneWADOImageLoader.wadouri.dataSetCacheManager) {
+                    try {
+                        cornerstoneWADOImageLoader.wadouri.dataSetCacheManager.purge();
+                    } catch (e) {
+                        // ignore if not available
+                    }
+                }
+
+
                 // Add file to WADO file manager
                 imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
 

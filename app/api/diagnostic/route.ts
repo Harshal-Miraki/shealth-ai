@@ -178,30 +178,34 @@ function generateMockReport(scanType: string, patientAge: number): { report: AIR
             break;
 
         case "mri":
-            diagnosis = "L4-L5 Disc Herniation";
+            diagnosis = "Normal Brain MRI";
             status = "completed";
             report = {
-                anatomicalRegion: "Lumbar Spine",
-                cptCode: "72148",
-                icd10Code: "M51.26",
-                primarySpecialty: "Orthopedics / Neurosurgery",
-                severity: "Urgent",
-                summary: "MRI of the Lumbar Spine reveals a right paracentral disc protrusion at the L4-L5 level, resulting in mild-to-moderate stenosis of the right lateral recess and potential impingement of the traversing right L5 nerve root. Vertebral body heights and alignment are maintained.",
+                anatomicalRegion: "Brain / Cerebrum",
+                cptCode: "70553",
+                icd10Code: "Z00.00",
+                primarySpecialty: "Neurology / Neuroradiology",
+                severity: "Normal",
+                summary: "MRI of the Brain with and without gadolinium contrast demonstrates normal brain parenchyma with preserved gray-white matter differentiation. No evidence of acute infarction, intracranial hemorrhage, mass lesion, or abnormal enhancement. The ventricular system is normal in size and configuration. No midline shift or mass effect. The major intracranial vessels demonstrate normal flow voids.",
                 findings: [
-                    "L4-L5: Right paracentral disc herniation (5mm extrusion)",
-                    "Nerve Roots: Contact with descending right L5 nerve root",
-                    "Canal Stenosis: Mild central canal stenosis",
-                    "Foramina: Patent neural foramina bilaterally",
-                    "Cord: Conus meullaris terminates at L1 level, normal signal"
+                    "Cerebral Hemispheres: Normal cortical thickness and signal intensity",
+                    "White Matter: No abnormal T2/FLAIR hyperintensities",
+                    "Ventricles: Normal size and configuration, no hydrocephalus",
+                    "Basal Ganglia: Symmetric with normal signal characteristics",
+                    "Thalami: Symmetric, no abnormal signal",
+                    "Brainstem: Normal morphology and signal, no lesions",
+                    "Cerebellum: Unremarkable, no tonsillar ectopia",
+                    "Pituitary Gland: Normal size and enhancement",
+                    "Extra-axial Spaces: No subdural or epidural collections",
+                    "Orbits & IACs: Grossly unremarkable"
                 ],
-                confidence: 96.2,
+                confidence: 97.5,
                 recommendations: [
-                    "Referral to Physical Medicine & Rehabilitation",
-                    "Trial of conservative therapy (PT, NSAIDs)",
-                    "Epidural steroid injection consideration if pain persists",
-                    "Neurosurgical consult if motor weakness develops"
+                    "No acute intracranial abnormality identified",
+                    "Clinical correlation as indicated",
+                    "Routine follow-up per clinical guidelines"
                 ],
-                riskFactors: ["Occupational Heavy Lifting", "Sedentary Lifestyle", "Obesity"],
+                riskFactors: [],
                 generatedAt: now
             };
              if (Math.random() > 0.7) {
@@ -224,6 +228,85 @@ function generateMockReport(scanType: string, patientAge: number): { report: AIR
                     "Conservative management vs. Arthroscopic repair",
                     "RICE protocol and activity modification"
                 ];
+             } else if (Math.random() > 0.4) {
+                // Brain MRI Case
+                diagnosis = "White Matter Lesions";
+                status = "completed";
+                report.anatomicalRegion = "Brain / Cerebrum";
+                report.cptCode = "70553";
+                report.icd10Code = "G93.89";
+                report.severity = "Routine";
+                report.primarySpecialty = "Neurology / Neuroradiology";
+                report.summary = "MRI of the Brain with and without contrast demonstrates scattered punctate T2/FLAIR hyperintense foci in the periventricular and subcortical white matter, nonspecific in etiology. No acute infarct, hemorrhage, mass lesion, or abnormal enhancement identified. The ventricular system and sulci are appropriate for patient age.";
+                report.findings = [
+                    "White Matter: Scattered T2/FLAIR hyperintensities in periventricular regions",
+                    "Gray Matter: Normal cortical thickness and signal intensity",
+                    "Ventricles: Normal size and configuration, no hydrocephalus",
+                    "Basal Ganglia: Symmetric, no abnormal signal",
+                    "Brainstem: Normal morphology and signal characteristics",
+                    "Cerebellum: Unremarkable, no tonsillar ectopia",
+                    "Enhancement: No pathological enhancement post-gadolinium",
+                    "Extra-axial Spaces: No subdural or epidural collections"
+                ];
+                report.recommendations = [
+                    "Clinical correlation with neurological symptoms",
+                    "Consider vascular risk factor assessment (HTN, DM, Lipids)",
+                    "Baseline study for future comparison",
+                    "Neurology follow-up if new symptoms develop"
+                ];
+                report.riskFactors = ["Hypertension", "Migraine History", "Age-related Changes"];
+                report.confidence = 93.7;
+
+                // Random critical brain finding
+                if (Math.random() > 0.6) {
+                    diagnosis = "Acute Ischemic Stroke - MCA Territory";
+                    status = "critical";
+                    report.severity = "Critical";
+                    report.icd10Code = "I63.50";
+                    report.summary = "CRITICAL FINDING: MRI Brain demonstrates acute restricted diffusion in the right middle cerebral artery (MCA) territory involving the right insular cortex, basal ganglia, and fronto-parietal operculum. DWI positive with corresponding ADC hypointensity confirms acute infarction. MRA shows diminished flow in the right M1 segment. IMMEDIATE STROKE TEAM ACTIVATION RECOMMENDED.";
+                    report.findings = [
+                        "DWI: Acute restricted diffusion in right MCA territory",
+                        "ADC: Corresponding hypointensity confirming cytotoxic edema",
+                        "FLAIR: Early sulcal effacement in affected region",
+                        "MRA: Diminished flow-related enhancement in right M1 segment",
+                        "Hemorrhage: No evidence of hemorrhagic transformation",
+                        "Mass Effect: Mild early mass effect, no midline shift",
+                        "Prior Infarcts: None identified"
+                    ];
+                    report.recommendations = [
+                        "URGENT: Immediate Stroke Team/Code Stroke activation",
+                        "Evaluate for IV thrombolysis (tPA) if within window",
+                        "Consider mechanical thrombectomy evaluation",
+                        "Continuous neuro monitoring in Stroke Unit",
+                        "Antiplatelet therapy as per stroke protocol"
+                    ];
+                    report.riskFactors = ["Atrial Fibrillation", "Hypertension", "Diabetes", "Hyperlipidemia"];
+                    report.confidence = 97.8;
+                } else if (Math.random() > 0.5) {
+                    diagnosis = "Multiple Sclerosis - Active Lesions";
+                    status = "pending";
+                    report.severity = "Urgent";
+                    report.icd10Code = "G35";
+                    report.summary = "MRI of the Brain reveals multiple ovoid T2/FLAIR hyperintense lesions in the periventricular white matter, oriented perpendicular to the ventricles (Dawson's fingers pattern). Juxtacortical and infratentorial lesions also present. Post-contrast imaging demonstrates at least 2 lesions with ring enhancement, suggesting active demyelination. Findings are highly suggestive of Multiple Sclerosis with active disease.";
+                    report.findings = [
+                        "Periventricular Lesions: Multiple ovoid lesions perpendicular to ventricles",
+                        "Juxtacortical Lesions: Present in bilateral frontal and parietal lobes",
+                        "Infratentorial: Single lesion in right middle cerebellar peduncle",
+                        "Enhancement: 2 lesions with incomplete ring enhancement (active)",
+                        "Corpus Callosum: Lesions along callosal-septal interface",
+                        "Spinal Cord: Cervical spine screening shows additional lesion at C2",
+                        "Optic Nerves: No optic neuritis on current study"
+                    ];
+                    report.recommendations = [
+                        "Urgent Neurology referral for MS evaluation",
+                        "Lumbar puncture for CSF analysis (oligoclonal bands)",
+                        "Visual evoked potentials if optic neuritis suspected",
+                        "Discuss disease-modifying therapy initiation",
+                        "Follow-up MRI in 3-6 months to assess disease activity"
+                    ];
+                    report.riskFactors = ["Young Adult", "Female Gender", "Geographic/Environmental Factors"];
+                    report.confidence = 91.5;
+                }
              }
             break;
 

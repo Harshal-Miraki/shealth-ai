@@ -560,8 +560,8 @@ export default function PatientDetailPage() {
                                                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                                                         <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Severity</p>
                                                         <span className={`font-semibold ${patient.aiReport.severity === 'Normal' ? 'text-emerald-600' :
-                                                                patient.aiReport.severity === 'Urgent' ? 'text-amber-600' :
-                                                                    patient.aiReport.severity === 'Critical' ? 'text-red-600' : 'text-slate-700'
+                                                            patient.aiReport.severity === 'Urgent' ? 'text-amber-600' :
+                                                                patient.aiReport.severity === 'Critical' ? 'text-red-600' : 'text-slate-700'
                                                             }`}>
                                                             {patient.aiReport.severity}
                                                         </span>
@@ -662,7 +662,7 @@ export default function PatientDetailPage() {
                             </div>
 
                             {/* Diagnosis Summary Card */}
-                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            {/* <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-6 py-4 border-b border-slate-100">
                                     <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                                         <Activity className="w-5 h-5 text-[var(--color-primary)]" />
@@ -687,7 +687,7 @@ export default function PatientDetailPage() {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            </div> */}
                         </div>
                     </div>
 

@@ -15,6 +15,12 @@ interface AIReport {
     recommendations: string[];
     riskFactors: string[];
     generatedAt: string;
+    // New Fields
+    anatomicalRegion: string;
+    cptCode: string;
+    icd10Code: string;
+    primarySpecialty: string;
+    severity: "Routine" | "Urgent" | "Critical" | "Normal";
 }
 
 interface PatientResult {
@@ -55,45 +61,67 @@ function generateMockReport(scanType: string, patientAge: number): { report: AIR
 
     switch (scanType.toLowerCase()) {
         case "x-ray":
-            diagnosis = isElderly ? "Signs of Osteopenia" : "Normal Chest Radiograph";
+            diagnosis = isElderly ? "Osteopenia with Degenerative Changes" : "Normal Chest Radiograph";
             status = isElderly ? "completed" : "completed";
             report = {
+                anatomicalRegion: "Chest / Thorax",
+                cptCode: "71046",
+                icd10Code: isElderly ? "M85.8" : "Z00.00",
+                primarySpecialty: "Radiology / Pulmonology",
+                severity: isElderly ? "Routine" : "Normal",
                 summary: isElderly 
-                    ? "X-Ray reveals reduced bone density consistent with osteopenia. No acute fractures or dislocations observed."
-                    : "Chest X-Ray is unremarkable. Lungs are clear, cardiac silhouette is normal size. No pleural effusion or pneumothorax.",
+                    ? "Radiographic examination demonstrates generalized reduction in bone density consistent with osteopenia. Mild thoracic scoliosis is noted. No acute pulmonary infiltrates, pleural effusions, or pneumothorax identified. Cardiac silhouette remains within normal limits."
+                    : "PA and lateral views of the chest reveal clear lung fields bilaterally. The cardiac silhouette, mediastinal contours, and hilar structures are normal in appearance. No focal consolidation, pneumothorax, or pleural effusion is seen. Osseous structures are intact.",
                 findings: isElderly 
                     ? [
-                        "Bones: Generalized decrease in bone density",
-                        "Joints: Mild degenerative changes in shoulder joint",
-                        "Soft Tissues: Normal",
-                        "Lungs: Clear fields"
+                        "Bones: Diffuse demineralization suggestive of osteopenia",
+                        "Spine: Mild dextroscoliosis of the thoracic spine",
+                        "Lungs: Clear parenchymal fields bilaterally",
+                        "Heart: Normal size (CTR < 0.5)",
+                        "Aorta: Mild atherosclerotic calcification of the aortic knob"
                     ]
                     : [
-                        "Lungs: Clear, no infiltrates",
-                        "Heart: Normal size",
-                        "Bones: No fractures",
-                        "Diaphragm: Normal contour"
+                        "Lungs: Clear parenchyma without infiltrates or masses",
+                        "Heart: Normal cardiac silhouette size and configuration",
+                        "Mediastinum: Normal contour and width",
+                        "Costophrenic Angles: Sharp and clear",
+                        "Bones: No acute fractures or bony abnormalities"
                     ],
                 confidence: 94.5,
                 recommendations: isElderly
                     ? [
-                        "DEXA scan recommended for further evaluation",
-                        "Calcium and Vitamin D supplementation",
-                        "Weight-bearing exercises"
+                        "Bone Mineral Density (DEXA) scan recommended",
+                        "Calcium (1200mg/day) and Vitamin D supplementation",
+                        "Encourage weight-bearing exercises",
+                        "Fall risk assessment"
                     ]
                     : [
-                        "No further imaging required currently",
-                        "Routine follow-up in 1 year"
+                        "No acute radiographic abnormalities",
+                        "No further imaging indicated",
+                        "Routine clinical follow-up"
                     ],
-                riskFactors: isElderly ? ["Age > 60", "Low BMI"] : [],
+                riskFactors: isElderly ? ["Advanced Age", "Low Bone Mass", "Sedentary Lifestyle"] : [],
                 generatedAt: now
             };
             if (Math.random() > 0.7) { // Random critical case
-                diagnosis = "Pneumonia Detected";
+                diagnosis = "Right Lower Lobe Pneumonia";
                 status = "critical";
-                report.summary = "URGENT: Opacity noted in right lower lobe consistent with pneumonia. Clinical correlation advised.";
-                report.findings = ["Right Lower Lobe: Consolidation present", "Air Bronchograms: Visible", "Heart: Normal limits"];
-                report.recommendations = ["Urgent Pulmonology referral", "Antibiotic therapy initiated", "Follow-up CXR in 2 weeks"];
+                report.severity = "Urgent";
+                report.icd10Code = "J18.9";
+                report.summary = "URGENT FINDING: Frontal and lateral chest radiographs demonstrate a focal area of consolidation in the right lower lobe with associated air bronchograms, consistent with lobar pneumonia. No significant pleural effusion. Clinical correlation for infection is advised.";
+                report.findings = [
+                    "Right Lung: Airspace consolidation in the right lower lobe",
+                    "Airways: Air bronchograms visible within the consolidation",
+                    "Left Lung: Clear",
+                    "Cardiac: Normal size",
+                    "Pleura: No pneumothorax or large effusion"
+                ],
+                report.recommendations = [
+                    "Immediate clinical evaluation for pneumonia",
+                    "Initiate empirical antibiotic therapy per guidelines",
+                    "Sputum culture and sensitivity",
+                    "Follow-up CXR in 4-6 weeks to ensure resolution"
+                ],
                 report.confidence = 89.2;
             }
             break;
@@ -102,66 +130,122 @@ function generateMockReport(scanType: string, patientAge: number): { report: AIR
         case "ct":
             diagnosis = "No Acute Intracranial Pathology";
             report = {
-                summary: "Head CT scan demonstrates no evidence of acute hemorrhage, mass effect, or territorial infarction. Ventricles are normal in size.",
+                anatomicalRegion: "Head / Brain",
+                cptCode: "70450",
+                icd10Code: "R51.9",
+                primarySpecialty: "Neurology / Neuroradiology",
+                severity: "Normal",
+                summary: "Non-contrast computed tomography of the head demonstrates no evidence of acute intracranial hemorrhage, mass effect, large territorial infarction, or extra-axial collection. Ventricular system size and configuration are normal for age. Midline structures are centered.",
                 findings: [
-                    "Brain Parenchyma: Normal density",
-                    "Ventricles: Symmetrical and normal size",
-                    "Midline Shift: None",
-                    "Bone Window: No fractures"
+                    "Brain Parenchyma: Normal gray-white matter differentiation",
+                    "Ventricles: Symmetrical, no hydrocephalus",
+                    "Vascular: No dense artery sign or aneurysm",
+                    "Skull/Bones: No calvarial fractures or lytic lesions",
+                    "Sinuses: Paranasal sinuses and mastoid air cells are clear"
                 ],
                 confidence: 98.1,
                 recommendations: [
+                    "No acute intracranial abnormality detected",
                     "Clinical observation",
-                    "MRI if symptoms persist"
+                    "MRI Brain may be considered if neurological symptoms persist"
                 ],
-                riskFactors: ["History of migraines"],
+                riskFactors: ["History of Migraines", "Hypertension"],
                 generatedAt: now
             };
              if (Math.random() > 0.8) {
-                diagnosis = "Suspicious Renal Mass";
+                diagnosis = "Indeterminate Renal Lesion";
                 status = "pending";
-                report.summary = "Abdominal CT reveals a 2cm hypodense lesion in the left kidney. Characteristics are indeterminate.";
-                report.findings = ["Left Kidney: 2.1cm hypodense lesion upper pole", "Liver: Normal", "Spleen: Normal", "Lymph Nodes: No lymphadenopathy"];
-                report.recommendations = ["Contrast-enhanced CT recommended", "Urology consultation"];
+                report.anatomicalRegion = "Abdomen";
+                report.cptCode = "74176";
+                report.icd10Code = "N28.89";
+                report.severity = "Urgent";
+                report.primarySpecialty = "Urology";
+                report.summary = "Contrast-enhanced CT of the abdomen reveals a complex 2.1 cm hypodense lesion in the upper pole of the left kidney. The lesion demonstrates minimal enhancement. While possibly a lipid-poor angiomyolipoma or complex cyst, renal cell carcinoma cannot be excluded.",
+                report.findings = [
+                    "Left Kidney: 2.1cm hypoattenuating mass in upper pole",
+                    "Enhancement: Minimal post-contrast enhancement (<10 HU)",
+                    "Adrenals: Normal appearance",
+                    "Liver/Spleen: Homogeneous echotexture",
+                    "Lymph Nodes: No retroperitoneal lymphadenopathy"
+                ],
+                report.recommendations = [
+                    "Dedicated Renal Mass Protocol CT or MRI",
+                    "Urology referral for further characterization",
+                    "Correlation with urinalysis and renal function tests"
+                ],
                 report.confidence = 85.5;
              }
             break;
 
         case "mri":
-            diagnosis = "Lumbar Disc Herniation";
+            diagnosis = "L4-L5 Disc Herniation";
             status = "completed";
             report = {
-                summary: "MRI of Lumbar spine shows L4-L5 disc herniation with mild nerve root compression. No spinal canal stenosis.",
+                anatomicalRegion: "Lumbar Spine",
+                cptCode: "72148",
+                icd10Code: "M51.26",
+                primarySpecialty: "Orthopedics / Neurosurgery",
+                severity: "Urgent",
+                summary: "MRI of the Lumbar Spine reveals a right paracentral disc protrusion at the L4-L5 level, resulting in mild-to-moderate stenosis of the right lateral recess and potential impingement of the traversing right L5 nerve root. Vertebral body heights and alignment are maintained.",
                 findings: [
-                    "L4-L5: Right paracentral disc protrusion",
-                    "Nerve Roots: Mild impingement of right L5 root",
-                    "Cord Signal: Normal",
-                    "Alignment: Normal lumbar lordosis maintained"
+                    "L4-L5: Right paracentral disc herniation (5mm extrusion)",
+                    "Nerve Roots: Contact with descending right L5 nerve root",
+                    "Canal Stenosis: Mild central canal stenosis",
+                    "Foramina: Patent neural foramina bilaterally",
+                    "Cord: Conus meullaris terminates at L1 level, normal signal"
                 ],
                 confidence: 96.2,
                 recommendations: [
-                    "Physiotherapy for 6 weeks",
-                    "Pain management",
-                    "Neurosurgical review if motor deficits develop"
+                    "Referral to Physical Medicine & Rehabilitation",
+                    "Trial of conservative therapy (PT, NSAIDs)",
+                    "Epidural steroid injection consideration if pain persists",
+                    "Neurosurgical consult if motor weakness develops"
                 ],
-                riskFactors: ["Occupational heavy lifting", "Sedentary lifestyle"],
+                riskFactors: ["Occupational Heavy Lifting", "Sedentary Lifestyle", "Obesity"],
                 generatedAt: now
             };
              if (Math.random() > 0.7) {
-                diagnosis = "Meniscal Tear";
-                report.summary = "MRI Knee demonstrates a complex tear of the posterior horn of the medial meniscus. ACL and PCL are intact.";
-                report.findings = ["Medial Meniscus: Grade 3 signal in posterior horn", "Lateral Meniscus: Intact", "Ligaments: ACL/PCL intact", "Fluid: Small joint effusion"];
-                report.recommendations = ["Orthopedic consultation", "Arthroscopy may be indicated", "RICE protocol"];
+                diagnosis = "Medial Meniscal Tear";
+                report.anatomicalRegion = "Knee (Right)";
+                report.cptCode = "73721";
+                report.icd10Code = "S83.2";
+                report.severity = "Routine";
+                report.primarySpecialty = "Orthopedics";
+                report.summary = "MRI of the Right Knee demonstrates a complex tear involving the posterior horn of the medial meniscus with extension to the inferior articular surface. The anterior cruciate ligament (ACL) and posterior cruciate ligament (PCL) appear intact. Small joint effusion visible.",
+                report.findings = [
+                    "Medial Meniscus: Complex tear of posterior horn",
+                    "Lateral Meniscus: Intact",
+                    "Cruciate Ligaments: ACL and PCL intact with normal signal",
+                    "Collateral Ligaments: MCL and LCL intact",
+                    "Bone Marrow: No contusions or fractures"
+                ];
+                report.recommendations = [
+                    "Orthopedic consultation for knee",
+                    "Conservative management vs. Arthroscopic repair",
+                    "RICE protocol and activity modification"
+                ];
              }
             break;
 
         default:
-            diagnosis = "Analysis Complete";
+            diagnosis = "General Analysis Complete";
             report = {
-                summary: "General analysis completed. No specific anomalies flagged by the system.",
-                findings: ["Scan quality: Adequate", "Artifacts: None"],
+                anatomicalRegion: "General / Unspecified",
+                cptCode: "76499",
+                icd10Code: "Z00.00",
+                primarySpecialty: "General Medicine",
+                severity: "Normal",
+                summary: "Automated analysis completed successfully. Image quality is adequate for diagnostic review. No gross anomalies or artifacts detected in the provided scan.",
+                findings: [
+                    "Image Quality: Satisfactory (Signal-to-Noise Ratio > 20dB)",
+                    "Artifacts: None detected",
+                    "Exposure: Optimal"
+                ],
                 confidence: 90.0,
-                recommendations: ["Clinical correlation required"],
+                recommendations: [
+                    "Clinical correlation required",
+                    "Radiologist review advised"
+                ],
                 riskFactors: [],
                 generatedAt: now
             };

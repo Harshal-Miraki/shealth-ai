@@ -511,7 +511,7 @@ export default function UploadPage() {
                                                 <option value="CT Scan">CT Scan</option>
                                                 <option value="MRI">MRI</option>
                                                 <option value="X-Ray">X-Ray</option>
-                                                <option value="Ultrasound">Ultrasound</option>
+                                                {/* <option value="Ultrasound">Ultrasound</option> */}
                                             </select>
                                         </div>
 

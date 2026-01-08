@@ -271,6 +271,12 @@ export default function PatientDetailPage() {
                                         recommendations: result.data.recommendations,
                                         riskFactors: result.data.riskFactors,
                                         generatedAt: result.data.generatedAt,
+                                        // New fields
+                                        anatomicalRegion: result.data.anatomicalRegion,
+                                        cptCode: result.data.cptCode,
+                                        icd10Code: result.data.icd10Code,
+                                        primarySpecialty: result.data.primarySpecialty,
+                                        severity: result.data.severity,
                                     },
                                     diagnosis: result.data.diagnosis,
                                     status: result.data.status,
@@ -547,6 +553,36 @@ export default function PatientDetailPage() {
                                             <div className={`p-4 rounded-xl mb-6 ${status.bg} ${status.border} border`}>
                                                 <p className={`font-medium ${status.color}`}>{patient.aiReport.summary}</p>
                                             </div>
+
+                                            {/* Clinical Details (New Section) */}
+                                            {patient.aiReport.severity && (
+                                                <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Severity</p>
+                                                        <span className={`font-semibold ${patient.aiReport.severity === 'Normal' ? 'text-emerald-600' :
+                                                                patient.aiReport.severity === 'Urgent' ? 'text-amber-600' :
+                                                                    patient.aiReport.severity === 'Critical' ? 'text-red-600' : 'text-slate-700'
+                                                            }`}>
+                                                            {patient.aiReport.severity}
+                                                        </span>
+                                                    </div>
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Anatomy</p>
+                                                        <p className="font-medium text-slate-700 text-sm">{patient.aiReport.anatomicalRegion || 'N/A'}</p>
+                                                    </div>
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Specialty</p>
+                                                        <p className="font-medium text-slate-700 text-sm truncate" title={patient.aiReport.primarySpecialty}>{patient.aiReport.primarySpecialty || 'General'}</p>
+                                                    </div>
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Codes</p>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-mono text-slate-600">CPT: {patient.aiReport.cptCode || '-'}</span>
+                                                            <span className="text-xs font-mono text-slate-600">ICD: {patient.aiReport.icd10Code || '-'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Findings */}
                                             <div className="mb-6">

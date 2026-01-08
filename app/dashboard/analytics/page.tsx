@@ -186,7 +186,7 @@ export default function AnalyticsPage() {
                     </div>
 
                     {/* Stat Cards Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <StatCard
                             title="Total Scans"
                             value="1,284"
@@ -197,7 +197,7 @@ export default function AnalyticsPage() {
                         />
                         <StatCard
                             title="AI Accuracy"
-                            value="97.8%"
+                            value="81.8%"
                             trend="+2.1%"
                             trendUp={true}
                             icon={<Target className="w-6 h-6 text-emerald-600" />} // Imported below
@@ -205,7 +205,7 @@ export default function AnalyticsPage() {
                         />
                         <StatCard
                             title="Avg. Analysis Time"
-                            value="1.2s"
+                            value="10.2s"
                             trend="-0.3s"
                             trendUp={true} // Lower time is good
                             icon={<Activity className="w-6 h-6 text-violet-600" />}

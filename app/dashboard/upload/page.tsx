@@ -57,6 +57,7 @@ export default function UploadPage() {
     const [patientAge, setPatientAge] = useState("");
     const [patientGender, setPatientGender] = useState("Male");
     const [scanType, setScanType] = useState("");
+    const [bodyPart, setBodyPart] = useState(""); // New state for body part from metadata or manual input
 
     // Auto-fill form when DICOM metadata is parsed
     useEffect(() => {
@@ -97,6 +98,10 @@ export default function UploadPage() {
             };
             if (dicomMetadata.modality && modalityMap[dicomMetadata.modality]) {
                 setScanType(modalityMap[dicomMetadata.modality]);
+            }
+            // Auto-fill body part if available
+            if (dicomMetadata.bodyPart) {
+                setBodyPart(dicomMetadata.bodyPart);
             }
         }
     }, [dicomMetadata]);
@@ -232,6 +237,7 @@ export default function UploadPage() {
         setPatientAge("");
         setPatientGender("Male");
         setScanType("");
+        setBodyPart("");
     };
 
     const handleRunDiagnosis = async () => {
@@ -250,18 +256,92 @@ export default function UploadPage() {
         console.log("Starting diagnosis...");
 
         try {
-            const formData = new FormData();
-            // Append all uploaded files
-            uploadedFiles.forEach((file) => {
-                formData.append('files', file);
-            });
+            const formData = new FormData(); // Define formData
 
-            // Append optional metadata if available/needed by API
-            // formData.append('patient_age', patientAge);
-            // formData.append('patient_gender', patientGender);
-            // formData.append('scan_type', scanType);
+            // Dynamic import for JSZip
+            const JSZip = (await import('jszip')).default;
+            const zip = new JSZip();
 
-            console.log("Sending request to API...");
+            // Helper to resize image to 1024x1024 (pads with black)
+            const resizeImageToStandard = async (file: File): Promise<Blob> => {
+                return new Promise((resolve, reject) => {
+                    if (!file.type.startsWith('image/')) {
+                        resolve(file); // Return original if not an image
+                        return;
+                    }
+
+                    const img = new globalThis.Image(); // Use globalThis.Image to avoid conflict with next/image
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        // Target size expected by model seems to be 1024x1024 based on error
+                        const TARGET_SIZE = 1024;
+                        canvas.width = TARGET_SIZE;
+                        canvas.height = TARGET_SIZE;
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) {
+                            resolve(file);
+                            return;
+                        }
+
+                        // Fill black background
+                        ctx.fillStyle = "#000000";
+                        ctx.fillRect(0, 0, TARGET_SIZE, TARGET_SIZE);
+
+                        // Calculate scale to fit
+                        const scale = Math.min(TARGET_SIZE / img.width, TARGET_SIZE / img.height);
+                        const w = img.width * scale;
+                        const h = img.height * scale;
+                        const x = (TARGET_SIZE - w) / 2;
+                        const y = (TARGET_SIZE - h) / 2;
+
+                        ctx.drawImage(img, x, y, w, h);
+
+                        canvas.toBlob((blob) => {
+                            if (blob) resolve(blob);
+                            else resolve(file);
+                        }, file.type);
+                    };
+                    img.onerror = () => resolve(file);
+                    img.src = URL.createObjectURL(file);
+                });
+            };
+
+            // Add all files to the zip (processing images first)
+            for (const file of uploadedFiles) {
+                if (file.type.startsWith('image/')) {
+                    try {
+                        console.log(`Processing/Resizing image: ${file.name}`);
+                        const resizedBlob = await resizeImageToStandard(file);
+                        zip.file(file.name, resizedBlob);
+                    } catch (err) {
+                        console.error("Error resizing image, using original", err);
+                        zip.file(file.name, file);
+                    }
+                } else {
+                    zip.file(file.name, file);
+                }
+            }
+
+            // Generate the zip blob
+            const zipContent = await zip.generateAsync({ type: "blob" });
+
+            // Create a file from the blob
+            const zipFile = new File([zipContent], "files.zip", { type: "application/zip" });
+
+            formData.append('dcm_zip', zipFile);
+
+            // Append metadata as required by new API
+            // Use 'modality' from metadata or derive from scanType
+            // CT Scan -> CT, MRI -> MR, X-Ray -> DX (or CR/XR) - Best to use metadata if available
+            let apiModality = dicomMetadata?.modality || "DX";
+            if (scanType === "CT Scan") apiModality = "CT";
+            else if (scanType === "MRI") apiModality = "MR";
+            else if (scanType === "X-Ray") apiModality = "DX"; // Default fallback
+
+            formData.append('modality', apiModality);
+            formData.append('body_parts', bodyPart || "Head"); // Default fallback if empty
+
+            console.log(`Sending request with modality: ${apiModality}, body_parts: ${bodyPart || "Head"}`);
 
             // Dynamic import for axios if not at top level, or just use it if imported
             const axios = (await import('axios')).default;
@@ -276,6 +356,106 @@ export default function UploadPage() {
             console.log("API Response:", response.data);
             const apiData = response.data;
 
+            // Parse Markdown Response from 'ai_analysis'
+            // Expected format:
+            // 1. DIAGNOSTIC REPORT: ...
+            // *Summary*: ...
+            // *Findings*: ...
+            // 2. PREVENTIVE MEASURES: ...
+
+            const analysisText = apiData.ai_analysis || "";
+            let summarySection = "";
+            let recommendationsSection = "";
+            let findings: string[] = [];
+
+            try {
+                // Try parsing as JSON first (new format)
+                const analysisJson = JSON.parse(analysisText);
+
+                // Extract Findings
+                if (analysisJson.FINDINGS) {
+                    findings = analysisJson.FINDINGS.split('. ').map((f: string) => f.trim()).filter((f: string) => f.length > 0);
+                } else if (analysisJson.findings) {
+                    findings = Array.isArray(analysisJson.findings) ? analysisJson.findings : [analysisJson.findings];
+                }
+
+                // Extract Summary/Impression
+                summarySection = analysisJson.IMPRESSION || analysisJson.impression || analysisJson.diff_diagnosis || "Analysis Complete.";
+
+                // Extract Recommendations/Preventive (if any, otherwise generic)
+                recommendationsSection = analysisJson.PREVENTIVE_MEASURES || analysisJson.recommendations || "Review findings with a specialist.";
+
+            } catch (e) {
+                // Fallback to Regex Parsing (text format)
+                console.log("JSON parse failed, using regex fallback for analysis text");
+
+                // 1. Extract Findings
+                const findingsMatch = analysisText.match(/FINDINGS:([\s\S]*?)(?=IMPRESSION:|DIAGNOSIS:|PREVENTIVE MEASURES:|$)/i);
+                if (findingsMatch) {
+                    findings = findingsMatch[1]
+                        .split('\n')
+                        .map((line: string) => line.trim())
+                        .filter((line: string) => line.length > 0 && (line.match(/^\d+\./) || line.startsWith('-') || line.startsWith('*')))
+                        .map((line: string) => line.replace(/^\d+\.\s*/, '').replace(/^[\*\-]\s*/, '').trim());
+                } else {
+                    // Fallback to old finding extraction if "FINDINGS:" keyword missing
+                    // If lines start with * or -, use them
+                    let possibleFindings = analysisText
+                        .split('\n')
+                        .filter((line: string) => line.trim().startsWith('*') || line.trim().startsWith('-'))
+                        .map((line: string) => line.replace(/^[\*\-]\s*/, '').trim());
+
+                    // If no bullet points found, take all text appearing BEFORE the first major section
+                    if (possibleFindings.length === 0) {
+                        const firstSectionIndex = analysisText.search(/IMPRESSION:|DIAGNOSIS:|PREVENTIVE MEASURES:/i);
+                        if (firstSectionIndex > 0) {
+                            const preamble = analysisText.substring(0, firstSectionIndex).trim();
+                            if (preamble.length > 0) {
+                                possibleFindings = preamble.split('\n').map((l: string) => l.trim()).filter((l: string | any[]) => l.length > 0);
+                            }
+                        }
+                    }
+
+                    findings = possibleFindings
+                        .filter((line: string) => line.length > 0 && !line.includes("DIAGNOSTIC REPORT") && !line.includes("PREVENTIVE MEASURES"));
+                }
+
+                // 2. Extract Impression / Diagnosis / Preventive Measures into Summary
+                const impressionMatch = analysisText.match(/IMPRESSION:([\s\S]*?)(?=DIAGNOSIS:|PREVENTIVE MEASURES:|$)/i);
+                const diagnosisMatch = analysisText.match(/DIAGNOSIS:([\s\S]*?)(?=PREVENTIVE MEASURES:|$)/i);
+                const preventiveMatch = analysisText.match(/PREVENTIVE MEASURES:([\s\S]*?)$/i);
+
+                let combinedSummary = "";
+
+                if (impressionMatch) {
+                    combinedSummary += "IMPRESSION:\n" + impressionMatch[1].trim();
+                }
+
+                if (diagnosisMatch) {
+                    if (combinedSummary) combinedSummary += "\n\n";
+                    combinedSummary += "DIAGNOSIS:\n" + diagnosisMatch[1].trim();
+                } else if (!impressionMatch) {
+                    // Fallback OLD SUMMARY extraction if neither Impression nor Diagnosis found
+                    const summaryMatch = analysisText.match(/DIAGNOSTIC REPORT:[\s\S]*?(?=2\. PREVENTIVE MEASURES|2\. \*\*PREVENTIVE)/i);
+                    combinedSummary = summaryMatch ? summaryMatch[0] : analysisText;
+                }
+
+                if (preventiveMatch) {
+                    if (combinedSummary) combinedSummary += "\n\n";
+                    combinedSummary += "PREVENTIVE MEASURES:\n" + preventiveMatch[1].trim();
+                }
+
+                summarySection = combinedSummary;
+
+                // Keep recommendations empty as requested to hide the UI section, or we could populate it but simply not show it.
+                // User asked to remove the recommendation part from display.
+                recommendationsSection = "";
+            }
+
+            // Extract Confidence (Study Confidence: 12.2%)
+            const confidenceMatch = analysisText.match(/Study Confidence:\s*(\d+(\.\d+)?)%/i);
+            const confidenceVal = confidenceMatch ? parseFloat(confidenceMatch[1]) : 0;
+
             // Map API response to our app's DiagnosisResult format
             const result = {
                 id: apiData.study_id || `dx-${Date.now()}`,
@@ -284,32 +464,30 @@ export default function UploadPage() {
                     name: patientName || "Unknown Patient",
                     age: parseInt(patientAge) || 0,
                     gender: patientGender || "Other",
-                    scanType: apiData.modality || scanType || "Unknown",
+                    scanType: apiModality || scanType || "Unknown", // Use API modality
                     scanDate: new Date().toISOString(),
                     status: "completed" as const,
-                    diagnosis: apiData.findings?.study_summary?.dominant_finding || "AI Analysis Complete",
-                    email: "patient@example.com", // Mock or from form
-                    phone: "555-0123", // Mock or from form
-                    bloodType: "O+", // Mock
-                    address: "123 Medical Center Blvd", // Mock
-                    allergies: ["None"], // Mock
+                    diagnosis: "AI Analysis Complete",
+                    email: "patient@example.com",
+                    phone: "555-0123",
+                    bloodType: "O+",
+                    address: "123 Medical Center Blvd",
+                    allergies: ["None"],
                     scanImage: renderedDicomImage || nonDicomImagePreview || "https://placehold.co/600x400?text=Scan+Image",
                 },
                 aiReport: {
-                    summary: apiData.preliminary_report || "No summary provided by AI.",
-                    findings: [
-                        `Dominant Finding: ${apiData.findings?.study_summary?.dominant_finding || "None"}`,
-                        `Confidence: ${(apiData.findings?.study_summary?.study_confidence * 100).toFixed(1)}%`,
-                        `Clinical Priority: ${apiData.findings?.study_summary?.clinical_priority || "Standard"}`,
-                        ...(apiData.findings?.limitations || [])
-                    ],
-                    recommendations: [
-                        "Review preliminary findings manually.",
-                        `Priority Level: ${apiData.findings?.study_summary?.clinical_priority || "Standard"}`
-                    ],
-                    riskFactors: [], // Missing property required by interface
-                    confidence: apiData.findings?.study_summary?.study_confidence || 0.95,
+                    summary: summarySection.substring(0, 500) + (summarySection.length > 500 ? "..." : ""), // Truncate for summary field if needed, or keep full
+                    findings: findings.length > 0 ? findings : ["Check Detailed Report."],
+                    recommendations: recommendationsSection
+                        ? (recommendationsSection.includes('\n')
+                            ? recommendationsSection.split('\n').filter((l: string) => l.trim().length > 3).map((l: string) => l.replace(/^\*\s*/, ''))
+                            : [recommendationsSection])
+                        : ["Review full report."],
+                    riskFactors: [],
+                    confidence: confidenceVal || 0.95, // Use extracted confidence or high default
                     generatedAt: new Date().toISOString(),
+                    bodyPart: bodyPart || "Unknown",
+                    modality: apiModality
                 }
             };
 
@@ -453,6 +631,11 @@ export default function UploadPage() {
                                                 icon={<Hash className="w-4 h-4" />}
                                                 label="Instance #"
                                                 value={dicomMetadata.instanceNumber}
+                                            />
+                                            <MetadataCard
+                                                icon={<Activity className="w-4 h-4" />}
+                                                label="Body Part"
+                                                value={dicomMetadata.bodyPart || "N/A"}
                                             />
                                         </div>
                                     </div>
@@ -605,6 +788,24 @@ export default function UploadPage() {
                                                 <option value="X-Ray">X-Ray</option>
                                                 {/* <option value="Ultrasound">Ultrasound</option> */}
                                             </select>
+                                        </div>
+
+                                        {/* Body Part */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                <Activity className="w-4 h-4 inline mr-2" />
+                                                Body Part
+                                                {dicomMetadata?.bodyPart && (
+                                                    <span className="ml-2 text-xs text-emerald-600">(from DICOM)</span>
+                                                )}
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={bodyPart}
+                                                onChange={(e) => setBodyPart(e.target.value)}
+                                                placeholder="e.g. Head, Chest, Knee"
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all"
+                                            />
                                         </div>
 
                                         {/* Run Diagnosis Button */}

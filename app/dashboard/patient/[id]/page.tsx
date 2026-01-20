@@ -709,9 +709,77 @@ export default function PatientDetailPage() {
                                                         placeholder="Enter clinical summary..."
                                                     />
                                                 ) : (
-                                                    <p className={`font-medium ${status.color}`}>
-                                                        {currentLang !== 'en' && translatedReport ? translatedReport.summary : patient.aiReport.summary}
-                                                    </p>
+                                                    <div className={`space-y-4 ${status.color}`}>
+                                                        {(() => {
+                                                            const text = currentLang !== 'en' && translatedReport ? translatedReport.summary : patient.aiReport.summary;
+
+                                                            // Check if text contains our structured keywords
+                                                            const hasStructure = text.includes("IMPRESSION:") || text.includes("DIAGNOSIS:") || text.includes("PREVENTIVE MEASURES:");
+
+                                                            if (!hasStructure) {
+                                                                return <p className="font-medium">{text}</p>;
+                                                            }
+
+                                                            // Function to parse and display structured text
+                                                            const sections = [];
+                                                            let remainingText = text;
+
+                                                            const keywords = ["IMPRESSION:", "DIAGNOSIS:", "PREVENTIVE MEASURES:"];
+
+                                                            // Simple parsing logic
+                                                            const impressionIdx = remainingText.indexOf("IMPRESSION:");
+                                                            const diagnosisIdx = remainingText.indexOf("DIAGNOSIS:");
+                                                            const preventiveIdx = remainingText.indexOf("PREVENTIVE MEASURES:");
+
+                                                            // Helper to extract content between keywords
+                                                            const extractSection = (startKeyword: string, endKeywords: string[]) => {
+                                                                const startIdx = text.indexOf(startKeyword);
+                                                                if (startIdx === -1) return null;
+
+                                                                const contentStart = startIdx + startKeyword.length;
+                                                                let contentEnd = text.length;
+
+                                                                endKeywords.forEach(kw => {
+                                                                    const kwIdx = text.indexOf(kw);
+                                                                    if (kwIdx > startIdx && kwIdx < contentEnd) {
+                                                                        contentEnd = kwIdx;
+                                                                    }
+                                                                });
+
+                                                                return text.substring(contentStart, contentEnd).trim();
+                                                            };
+
+                                                            const impression = extractSection("IMPRESSION:", ["DIAGNOSIS:", "PREVENTIVE MEASURES:"]);
+                                                            const diagnosis = extractSection("DIAGNOSIS:", ["PREVENTIVE MEASURES:"]);
+                                                            const preventive = extractSection("PREVENTIVE MEASURES:", []);
+
+                                                            return (
+                                                                <div className="flex flex-col gap-3">
+                                                                    {impression && (
+                                                                        <div className="bg-white/50 p-3 rounded-lg">
+                                                                            <span className="font-bold block text-sm uppercase opacity-70 mb-1">Impression</span>
+                                                                            <p className="font-semibold">{impression}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {diagnosis && (
+                                                                        <div className="bg-white/50 p-3 rounded-lg border-l-4 border-[var(--color-primary)]">
+                                                                            <span className="font-bold block text-sm uppercase opacity-70 mb-1">Diagnosis</span>
+                                                                            <p className="font-bold text-lg">{diagnosis}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {preventive && (
+                                                                        <div className="bg-[var(--color-primary)]/5 p-3 rounded-lg border border-[var(--color-primary)]/10">
+                                                                            <span className="font-bold block text-sm uppercase opacity-70 mb-1">Preventive Measures</span>
+                                                                            <p className="italic">{preventive}</p>
+                                                                        </div>
+                                                                    )}
+                                                                    {!impression && !diagnosis && !preventive && (
+                                                                        <p className="font-medium whitespace-pre-wrap">{text}</p>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </div>
                                                 )}
                                             </div>
 
@@ -788,50 +856,6 @@ export default function PatientDetailPage() {
                                                 </ul>
                                             </div>
 
-                                            {/* Recommendations */}
-                                            <div className="mb-6">
-                                                <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                                    <ClipboardList className="w-4 h-4" />
-                                                    {t.aiReport.recommendations}
-                                                </h3>
-                                                <ul className="space-y-2">
-                                                    {isEditing ? (
-                                                        <>
-                                                            {editedReport?.recommendations.map((rec: string, index: number) => (
-                                                                <li key={index} className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="text"
-                                                                        value={rec}
-                                                                        onChange={(e) => updateArrayField('recommendations', index, e.target.value)}
-                                                                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]"
-                                                                    />
-                                                                    <button
-                                                                        onClick={() => removeArrayItem('recommendations', index)}
-                                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                                                    >
-                                                                        <Trash2 className="w-4 h-4" />
-                                                                    </button>
-                                                                </li>
-                                                            ))}
-                                                            <button
-                                                                onClick={() => addArrayItem('recommendations')}
-                                                                className="flex items-center gap-2 text-sm text-[var(--color-primary)] hover:underline mt-2 font-medium"
-                                                            >
-                                                                <Plus className="w-4 h-4" /> Add Recommendation
-                                                            </button>
-                                                        </>
-                                                    ) : (
-                                                        (currentLang !== 'en' && translatedReport ? translatedReport.recommendations : patient.aiReport.recommendations).map((rec: string, index: number) => (
-                                                            <li key={index} className="flex items-start gap-3 text-slate-700">
-                                                                <span className="w-5 h-5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center text-xs font-bold flex-shrink-0">
-                                                                    {index + 1}
-                                                                </span>
-                                                                <span>{rec}</span>
-                                                            </li>
-                                                        ))
-                                                    )}
-                                                </ul>
-                                            </div>
 
                                             {/* Risk Factors */}
                                             {patient.aiReport.riskFactors && patient.aiReport.riskFactors.length > 0 && (

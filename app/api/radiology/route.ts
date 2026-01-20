@@ -5,17 +5,12 @@ export const runtime = 'nodejs';
 // Fallback mock response generator when external API is unavailable
 function generateMockRadiologyReport(fileCount: number) {
     const studyId = `STUDY-${Date.now()}`;
-    const modalities = ['CT', 'MR', 'CR', 'DX'];
-    const modality = modalities[Math.floor(Math.random() * modalities.length)];
+    const modality = 'CT';
     
     const findings = {
         study_summary: {
-            dominant_finding: modality === 'CT' 
-                ? 'No acute intracranial abnormality' 
-                : modality === 'MR' 
-                    ? 'Normal brain parenchyma, no mass lesions'
-                    : 'Clear lung fields bilaterally',
-            study_confidence: 0.92 + Math.random() * 0.06,
+            dominant_finding: 'No acute intracranial abnormality', 
+            // study_confidence: 0.92 + Math.random() * 0.06,
             clinical_priority: Math.random() > 0.7 ? 'Urgent' : 'Standard'
         },
         limitations: [
@@ -30,14 +25,31 @@ function generateMockRadiologyReport(fileCount: number) {
             ? `MRI Brain with and without contrast: Normal brain parenchyma with preserved gray-white matter differentiation. No evidence of acute infarction, hemorrhage, or mass lesion. The ventricular system is normal in size. No abnormal enhancement. Major intracranial vessels demonstrate normal flow voids. Reviewed ${fileCount} image(s).`
             : `Chest radiograph (PA and Lateral views): Lungs are clear bilaterally with no focal consolidation, effusion, or pneumothorax. Cardiac silhouette is within normal limits. Mediastinal contours are unremarkable. No acute osseous abnormalities. Reviewed ${fileCount} image(s).`;
 
+    const aiAnalysis = `
+1. DIAGNOSTIC REPORT:
+*Summary*: ${preliminaryReport}
+
+*Findings*:
+- ${findings.study_summary.dominant_finding}
+- Ventricles and sulci are normal in size and configuration.
+- Gray-white matter differentiation is preserved.
+- No acute infarct on non-contrast imaging.
+- Paranasal sinuses and mastoid air cells are clear.
+
+2. PREVENTIVE MEASURES:
+* Clinical correlation is recommended.
+* Follow up if symptoms persist.
+`;
+
     return {
         study_id: studyId,
         modality: modality,
         preliminary_report: preliminaryReport,
         findings: findings,
+        ai_analysis: aiAnalysis, // Added for frontend compatibility
         processing_time_ms: 1500 + Math.floor(Math.random() * 1000),
         model_version: 'fallback-v1.0',
-        _fallback: true // Flag to indicate this is a fallback response
+        _fallback: true
     };
 }
 
@@ -46,43 +58,39 @@ export async function POST(req: NextRequest) {
 
     try {
         const formData = await req.formData();
-        const files = formData.getAll('files');
+        
+        // Removed legacy 'files' check
 
-        if (!files || files.length === 0) {
-            console.error("Proxy: No files found in request");
-            return NextResponse.json({ error: 'No files provided' }, { status: 400 });
+        // - dcm_zip: The zip file (from frontend) - mapped from 'files' (or 'dcm_zip' if we changed frontend to send that key, checking frontend...)
+        // Frontend sends 'dcm_zip' directly now.
+        
+        const dcmZip = formData.get('dcm_zip');
+        const modality = formData.get('modality') || "DX";
+        const bodyParts = formData.get('body_parts') || "Head";
+        
+        // Wait, did we change frontend only or also allow 'files' fallback?
+        // Frontend sends 'dcm_zip'.
+        
+        if (!dcmZip) {
+             console.error("Proxy: No dcm_zip found in request");
+             return NextResponse.json({ error: 'No dcm_zip provided' }, { status: 400 });
         }
-
-        console.log(`Proxy: ${files.length} file(s) received. Processing...`);
 
         const upstreamFormData = new FormData();
-
-        for (const file of files) {
-            // Check if it's really a File/Blob
-            if (file && typeof (file as any).arrayBuffer === 'function') {
-                const f = file as File;
-                console.log(`Proxy: Processing file: ${f.name} (${f.size} bytes, type: ${f.type})`);
-
-                // Deep Copy: Read into memory buffer to ensure clean upload
-                const buffer = await f.arrayBuffer();
-                const blob = new Blob([buffer], { type: f.type });
-
-                // Append with filename (CRITICAL)
-                // If name is missing, provide a default
-                const filename = f.name || "upload.dcm";
-                upstreamFormData.append('files', blob, filename);
-            } else {
-                console.warn("Proxy: item in 'files' is not a File/Blob?");
-            }
-        }
+        upstreamFormData.append('dcm_zip', dcmZip);
+        upstreamFormData.append('modality', modality);
+        upstreamFormData.append('body_parts', bodyParts);
+        
+        console.log(`Proxy: Forwarding request to MedicalAI. Modality: ${modality}, BodyPart: ${bodyParts}`);
 
         const headers = new Headers();
         headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
         console.log("Proxy: Sending fetch request to external API...");
-
+        
         try {
-            const response = await fetch('https://medapi.sunrisesourcings.com/radiology/generate-report', {
+            // Using exact endpoint confirmed via openapi.json
+            const response = await fetch('https://medicalai.sunrisesourcings.com/detect', {
                 method: 'POST',
                 body: upstreamFormData,
                 headers: headers,
@@ -92,14 +100,8 @@ export async function POST(req: NextRequest) {
                 const errorText = await response.text();
                 console.error("Proxy: Upstream API Error", response.status);
                 console.error("Proxy: Error Body Snippet:", errorText.substring(0, 500));
-
-                // Fallback to mock response for 401, 502, 503, etc.
-                if (response.status === 401 || response.status === 502 || response.status === 503 || response.status === 500) {
-                    console.log("Proxy: Using fallback mock response due to upstream error");
-                    const mockData = generateMockRadiologyReport(files.length);
-                    return NextResponse.json(mockData);
-                }
-
+                
+                // Return error to frontend
                 try {
                     const errorJson = JSON.parse(errorText);
                     return NextResponse.json(
@@ -108,11 +110,7 @@ export async function POST(req: NextRequest) {
                     );
                 } catch (e) {
                     return NextResponse.json(
-                        {
-                            error: 'Upstream API Error',
-                            details: `Server returned ${response.status}. See console logs.`,
-                            status: response.status
-                        },
+                        { error: 'Upstream API Error', details: errorText, status: response.status },
                         { status: response.status }
                     );
                 }
@@ -123,11 +121,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(data);
 
         } catch (fetchError: any) {
-            // Network error or timeout - use fallback
             console.error("Proxy: Network/Fetch Error:", fetchError.message);
-            console.log("Proxy: Using fallback mock response due to network error");
-            const mockData = generateMockRadiologyReport(files.length);
-            return NextResponse.json(mockData);
+            return NextResponse.json(
+                { error: 'Network Error', details: fetchError.message },
+                { status: 502 }
+            );
         }
 
     } catch (error: any) {

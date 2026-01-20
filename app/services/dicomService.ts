@@ -11,6 +11,7 @@ export interface DicomMetadata {
   studyDescription: string;
   seriesDescription: string;
   instanceNumber: string;
+  bodyPart: string;
 }
 
 export const dicomService = {
@@ -34,7 +35,8 @@ export const dicomService = {
             manufacturer: dataset.Manufacturer || "Unknown",
             studyDescription: dataset.StudyDescription || "Medical Scan",
             seriesDescription: dataset.SeriesDescription || "",
-            instanceNumber: dataset.InstanceNumber || "1"
+            instanceNumber: dataset.InstanceNumber || "1",
+            bodyPart: dataset.BodyPartExamined || ""
           };
 
           resolve({ metadata, dataset });

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '@/app/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
 
         console.log(`Proxy: Authenticating user ${body.email}...`);
 
-        const response = await fetch('https://medapi.sunrisesourcings.com/auth/login', {
+        const response = await fetch(`${config.backendApiUrl}/auth/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

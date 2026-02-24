@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '@/app/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
             // But relying on service to send correct shape is better.
         };
 
-        const response = await fetch('https://medapi.sunrisesourcings.com/auth/register', {
+        const response = await fetch(`${config.backendApiUrl}/auth/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

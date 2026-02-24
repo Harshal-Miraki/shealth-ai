@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { config } from '@/app/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
         
         try {
             // Using exact endpoint confirmed via openapi.json
-            const response = await fetch('https://medicalai.sunrisesourcings.com/detect', {
+            const response = await fetch(`${config.medicalAiApiUrl}/detect`, {
                 method: 'POST',
                 body: upstreamFormData,
                 headers: headers,
